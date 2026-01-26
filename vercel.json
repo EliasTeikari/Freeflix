@@ -1,0 +1,21 @@
+{
+  "functions": {
+    "app/api/movies/stream/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/movies/[id]/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/movies/search/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}
