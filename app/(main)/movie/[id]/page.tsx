@@ -100,8 +100,11 @@ export default function MoviePage({ params }: MoviePageProps) {
         setEmbedUrl(data.embedUrl);
         setIsPlaying(true);
       } else {
-        // No stream available
-        setStreamError(data.error || "No stream available for this content. The content may have been removed.");
+        // No stream available - show detailed error if available
+        const errorMessage = data.details 
+          ? `${data.error}: ${data.details}`
+          : data.error || "No stream available for this content. The streaming source may be temporarily unavailable.";
+        setStreamError(errorMessage);
       }
     } catch (error) {
       console.error("Failed to get stream:", error);

@@ -281,6 +281,17 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
         // #region agent log
         logDebug('myflixer.ts:getAllEmbedSources:ajax', 'AJAX response', { url, status: response.status, ok: response.ok }, 'B');
         // #endregion
+        
+        // Check if response is HTML (blocked by bot protection) instead of JSON
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('text/html')) {
+          // Site is returning HTML instead of JSON - likely blocked by Cloudflare/anti-bot
+          // #region agent log
+          logDebug('myflixer.ts:getAllEmbedSources:blocked', 'Request blocked - received HTML instead of JSON', { url, contentType }, 'B');
+          // #endregion
+          continue;
+        }
+        
         if (response.ok) { serversHtml = await response.text(); successUrl = url; break; }
       } catch (e) {
         // #region agent log
@@ -291,7 +302,7 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
 
     if (!serversHtml) {
       // #region agent log
-      logDebug('myflixer.ts:getAllEmbedSources:no-html', 'No servers HTML found', { id, triedUrls: possibleUrls.length }, 'B');
+      logDebug('myflixer.ts:getAllEmbedSources:no-html', 'No servers HTML found - source may be blocking automated requests', { id, triedUrls: possibleUrls.length }, 'B');
       // #endregion
       return [];
     }

@@ -58,8 +58,11 @@ export async function GET(request: Request) {
       logDebug('stream/route.ts:GET:no-sources', 'No embed sources found', { id, episodeId }, 'D');
       // #endregion
       return NextResponse.json(
-        { error: "No stream available" },
-        { status: 404 }
+        { 
+          error: "Stream temporarily unavailable",
+          details: "The streaming source is currently blocking automated requests. This may be due to anti-bot protection. Please try again later or try a different title."
+        },
+        { status: 503 }
       );
     }
 
