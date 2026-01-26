@@ -7,6 +7,12 @@ import { MovieDetails } from "@/components/movie/movie-details";
 import { MovieDetailsSkeleton } from "@/components/ui/skeleton";
 import type { MovieDetails as MovieDetailsType } from "@/types/movie";
 
+interface EmbedSource {
+  url: string;
+  serverName: string;
+  serverId: string;
+}
+
 interface MoviePageProps {
   params: Promise<{ id: string }>;
 }
@@ -19,6 +25,8 @@ export default function MoviePage({ params }: MoviePageProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+  const [embedUrls, setEmbedUrls] = useState<EmbedSource[]>([]);
+  const [currentServerIndex, setCurrentServerIndex] = useState(0);
   const [initialProgress, setInitialProgress] = useState(0);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isLoadingStream, setIsLoadingStream] = useState(false);
@@ -73,11 +81,13 @@ export default function MoviePage({ params }: MoviePageProps) {
     try {
       const response = await fetch(`/api/movies/stream?id=${id}`);
       const data = await response.json();
-      // #region agent log
-      fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'movie/[id]/page.tsx:handlePlay',message:'Stream API response received',data:{id,responseStatus:response.status,responseOk:response.ok,data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       
-      if (data.embedUrl) {
+      if (data.embedUrls && data.embedUrls.length > 0) {
+        setEmbedUrls(data.embedUrls);
+        setCurrentServerIndex(0);
+        setEmbedUrl(data.embedUrls[0].url);
+        setIsPlaying(true);
+      } else if (data.embedUrl) {
         setEmbedUrl(data.embedUrl);
         setIsPlaying(true);
       } else {
@@ -87,11 +97,15 @@ export default function MoviePage({ params }: MoviePageProps) {
     } catch (error) {
       console.error("Failed to get stream:", error);
       setStreamError("Failed to load stream. Please try again later.");
-      // #region agent log
-      fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'movie/[id]/page.tsx:handlePlay:error',message:'Failed to get stream',data:{id,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
     } finally {
       setIsLoadingStream(false);
+    }
+  };
+
+  const handleServerChange = (index: number) => {
+    if (embedUrls[index]) {
+      setCurrentServerIndex(index);
+      setEmbedUrl(embedUrls[index].url);
     }
   };
 
@@ -148,6 +162,27 @@ export default function MoviePage({ params }: MoviePageProps) {
             embedUrl={embedUrl}
             initialProgress={initialProgress}
           />
+          {/* Server Selection */}
+          {embedUrls.length > 1 && (
+            <div className="bg-gray-900 px-4 py-3 border-t border-gray-800">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-gray-400 text-sm">Video not working? Try another server:</span>
+                {embedUrls.map((source, index) => (
+                  <button
+                    key={source.serverId}
+                    onClick={() => handleServerChange(index)}
+                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                      index === currentServerIndex
+                        ? "bg-red-600 text-white"
+                        : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    }`}
+                  >
+                    {source.serverName.replace('Server ', '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
