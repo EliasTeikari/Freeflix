@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import type { Movie, MovieDetails, StreamSource } from "@/types/movie";
+import type { Movie, MovieDetails, StreamSource, Season, Episode } from "@/types/movie";
 
 const BASE_URL = process.env.MYFLIXER_BASE_URL || "https://myflixerz.to";
 
@@ -105,27 +105,57 @@ export async function getTrending(): Promise<Movie[]> {
 
 export async function getMovieDetails(id: string): Promise<MovieDetails | null> {
   try {
-    // First, try movie URL
-    let html: string;
-    let isMovie = true;
-    let actualUrl = `${BASE_URL}/movie/watch-movie-${id}`;
+    // Try different URL patterns to fetch the page
+    let html: string = '';
+    const urlPatterns = [
+      `${BASE_URL}/movie/watch-movie-${id}`,
+      `${BASE_URL}/tv/watch-tv-${id}`,
+      `${BASE_URL}/watch-movie-${id}`,
+    ];
 
-    try {
-      html = await fetchPage(actualUrl);
-    } catch {
-      // Try TV show URL
+    for (const url of urlPatterns) {
       try {
-        actualUrl = `${BASE_URL}/tv/watch-tv-${id}`;
-        html = await fetchPage(actualUrl);
-        isMovie = false;
+        html = await fetchPage(url);
+        break;
       } catch {
-        // Try generic detail page
-        actualUrl = `${BASE_URL}/watch-movie-${id}`;
-        html = await fetchPage(actualUrl);
+        // Continue to next URL pattern
       }
     }
 
+    if (!html) {
+      return null;
+    }
+
     const $ = cheerio.load(html);
+
+    // Detect content type from HTML content (not URL)
+    // Method 1: Check for season selector elements (TV shows have these)
+    const hasSeasons = $(".ss-list").length > 0 || 
+                       $("[data-season]").length > 0 ||
+                       $(".dropdown-menu.ep-range").length > 0 ||
+                       $(".seasons").length > 0;
+
+    // Method 2: Check breadcrumb or URL patterns in the page
+    const breadcrumbText = $(".breadcrumb").text().toLowerCase();
+    const isTvFromBreadcrumb = breadcrumbText.includes("tv") || 
+                               breadcrumbText.includes("series");
+
+    // Method 3: Check the canonical URL or og:url meta tag
+    const canonicalUrl = $("link[rel='canonical']").attr("href") || 
+                         $("meta[property='og:url']").attr("content") || "";
+    const isTvFromUrl = canonicalUrl.includes("/tv/");
+
+    // Method 4: Check page type indicators
+    const pageType = $(".dp-i-c-right .type").text().toLowerCase();
+    const isTvFromType = pageType.includes("tv");
+
+    // Method 5: Check for episode-related elements
+    const hasEpisodes = $(".episodes").length > 0 ||
+                        $(".ep-item").length > 0 ||
+                        $("[data-episode]").length > 0;
+
+    // Combine signals - if any indicate TV, it's a series
+    const isSeries = hasSeasons || isTvFromBreadcrumb || isTvFromUrl || isTvFromType || hasEpisodes;
 
     const title = $(".heading-name").text().trim() || $("h2.heading-name").text().trim();
     const poster = $(".film-poster-img").attr("src") || "";
@@ -174,13 +204,13 @@ export async function getMovieDetails(id: string): Promise<MovieDetails | null> 
 
     return {
       id,
-      title: title || `Movie ${id}`,
+      title: title || `Content ${id}`,
       poster,
       backdrop,
       description: description || "No description available.",
       year: yearMatch?.[1] || "",
       duration: durationMatch ? `${durationMatch[1]} min` : "",
-      type: isMovie ? "movie" : "series",
+      type: isSeries ? "series" : "movie",
       rating: $(".imdb").text().trim() || undefined,
       genres,
       cast: cast.slice(0, 5),
@@ -442,5 +472,215 @@ export async function getEmbedSource(id: string, serverId?: string): Promise<str
   } catch (error) {
     console.error("Embed source error:", error);
     return null;
+  }
+}
+
+// Get seasons for a TV series
+export async function getSeriesSeasons(id: string): Promise<Season[]> {
+  try {
+    const possibleUrls = [
+      `${BASE_URL}/ajax/v2/tv/seasons/${id}`,
+      `${BASE_URL}/ajax/tv/seasons/${id}`,
+      `${BASE_URL}/ajax/season/list/${id}`,
+    ];
+
+    let seasonsHtml = '';
+    for (const url of possibleUrls) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: BASE_URL,
+          },
+        });
+        if (response.ok) {
+          seasonsHtml = await response.text();
+          break;
+        }
+      } catch {
+        // Continue to next URL
+      }
+    }
+
+    if (!seasonsHtml) {
+      return [];
+    }
+
+    const $ = cheerio.load(seasonsHtml);
+    const seasons: Season[] = [];
+
+    // Parse season items - they typically have data-id attribute
+    $("[data-id]").each((index, el) => {
+      const $el = $(el);
+      const seasonId = $el.attr("data-id");
+      const seasonText = $el.text().trim();
+      
+      // Extract season number from text like "Season 1" or "S1"
+      const seasonMatch = seasonText.match(/(?:Season\s*)?(\d+)/i);
+      const seasonNumber = seasonMatch ? parseInt(seasonMatch[1], 10) : index + 1;
+
+      if (seasonId) {
+        seasons.push({
+          id: seasonId,
+          seasonNumber,
+          name: seasonText || `Season ${seasonNumber}`,
+        });
+      }
+    });
+
+    // Sort by season number
+    seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
+
+    return seasons;
+  } catch (error) {
+    console.error("Get series seasons error:", error);
+    return [];
+  }
+}
+
+// Get episodes for a specific season
+export async function getSeasonEpisodes(seasonId: string): Promise<Episode[]> {
+  try {
+    const possibleUrls = [
+      `${BASE_URL}/ajax/v2/season/episodes/${seasonId}`,
+      `${BASE_URL}/ajax/season/episodes/${seasonId}`,
+      `${BASE_URL}/ajax/episode/list/${seasonId}`,
+    ];
+
+    let episodesHtml = '';
+    for (const url of possibleUrls) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: BASE_URL,
+          },
+        });
+        if (response.ok) {
+          episodesHtml = await response.text();
+          break;
+        }
+      } catch {
+        // Continue to next URL
+      }
+    }
+
+    if (!episodesHtml) {
+      return [];
+    }
+
+    const $ = cheerio.load(episodesHtml);
+    const episodes: Episode[] = [];
+
+    // Parse episode items
+    $("[data-id]").each((index, el) => {
+      const $el = $(el);
+      const episodeId = $el.attr("data-id");
+      const episodeTitle = $el.attr("title") || $el.text().trim();
+      
+      // Extract episode number from text like "Episode 1", "Eps 1", "E1", or just the title
+      const episodeMatch = episodeTitle.match(/(?:Episode|Eps?|E)\s*(\d+)/i);
+      const episodeNumber = episodeMatch ? parseInt(episodeMatch[1], 10) : index + 1;
+
+      if (episodeId) {
+        episodes.push({
+          id: episodeId,
+          episodeNumber,
+          title: episodeTitle || `Episode ${episodeNumber}`,
+          seasonId,
+        });
+      }
+    });
+
+    // Sort by episode number
+    episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
+
+    return episodes;
+  } catch (error) {
+    console.error("Get season episodes error:", error);
+    return [];
+  }
+}
+
+// Get embed sources for a specific episode
+export async function getEpisodeEmbedSources(episodeId: string): Promise<{ serverId: string; serverName: string; link: string }[]> {
+  try {
+    // First, get the servers for this episode
+    const possibleUrls = [
+      `${BASE_URL}/ajax/v2/episode/servers/${episodeId}`,
+      `${BASE_URL}/ajax/episode/servers/${episodeId}`,
+    ];
+
+    let serversHtml = '';
+    for (const url of possibleUrls) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: BASE_URL,
+          },
+        });
+        if (response.ok) {
+          serversHtml = await response.text();
+          break;
+        }
+      } catch {
+        // Continue to next URL
+      }
+    }
+
+    if (!serversHtml) {
+      return [];
+    }
+
+    const $ = cheerio.load(serversHtml);
+    const allServers: { id: string; name: string }[] = [];
+
+    $("[data-id]").each((_, el) => {
+      const $el = $(el);
+      const dataId = $el.attr("data-id");
+      const title = $el.attr("title") || $el.text().trim() || 'unknown';
+      if (dataId && !allServers.find(s => s.id === dataId)) {
+        allServers.push({ id: dataId, name: title });
+      }
+    });
+
+    const embedLinks: { serverId: string; serverName: string; link: string }[] = [];
+
+    for (const server of allServers) {
+      const embedEndpoints = [
+        `${BASE_URL}/ajax/episode/sources/${server.id}`,
+        `${BASE_URL}/ajax/sources/${server.id}`,
+      ];
+
+      for (const embedUrl of embedEndpoints) {
+        try {
+          const embedResponse = await fetch(embedUrl, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "X-Requested-With": "XMLHttpRequest",
+              Referer: BASE_URL,
+            },
+          });
+          if (embedResponse.ok) {
+            const embedData = await embedResponse.json();
+            if (embedData.link) {
+              embedLinks.push({ serverId: server.id, serverName: server.name, link: embedData.link });
+              break;
+            }
+          }
+        } catch {
+          // Continue
+        }
+      }
+    }
+
+    return embedLinks;
+  } catch (error) {
+    console.error("Get episode embed sources error:", error);
+    return [];
   }
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useSession } from "next-auth/react";
 import { MoviePlayer } from "@/components/movie/movie-player";
 import { MovieDetails } from "@/components/movie/movie-details";
+import { EpisodeSelector } from "@/components/movie/episode-selector";
 import { MovieDetailsSkeleton } from "@/components/ui/skeleton";
 import type { MovieDetails as MovieDetailsType } from "@/types/movie";
 
@@ -30,6 +31,8 @@ export default function MoviePage({ params }: MoviePageProps) {
   const [initialProgress, setInitialProgress] = useState(0);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isLoadingStream, setIsLoadingStream] = useState(false);
+  const [currentEpisodeId, setCurrentEpisodeId] = useState<string | null>(null);
+  const [currentEpisodeInfo, setCurrentEpisodeInfo] = useState<{ episodeNumber: number; seasonNumber: number } | null>(null);
 
   // Fetch movie details
   useEffect(() => {
@@ -73,13 +76,19 @@ export default function MoviePage({ params }: MoviePageProps) {
     }
   };
 
-  const handlePlay = async () => {
+  const handlePlay = async (episodeId?: string) => {
     setStreamError(null);
     setIsLoadingStream(true);
     
     // Get the stream URL
     try {
-      const response = await fetch(`/api/movies/stream?id=${id}`);
+      // Build the URL with optional episodeId for series
+      let streamUrl = `/api/movies/stream?id=${id}`;
+      if (episodeId) {
+        streamUrl += `&episodeId=${episodeId}`;
+      }
+      
+      const response = await fetch(streamUrl);
       const data = await response.json();
       
       if (data.embedUrls && data.embedUrls.length > 0) {
@@ -92,7 +101,7 @@ export default function MoviePage({ params }: MoviePageProps) {
         setIsPlaying(true);
       } else {
         // No stream available
-        setStreamError(data.error || "No stream available for this movie. The content may have been removed.");
+        setStreamError(data.error || "No stream available for this content. The content may have been removed.");
       }
     } catch (error) {
       console.error("Failed to get stream:", error);
@@ -100,6 +109,12 @@ export default function MoviePage({ params }: MoviePageProps) {
     } finally {
       setIsLoadingStream(false);
     }
+  };
+
+  const handleEpisodeSelect = (episodeId: string, episodeNumber: number, seasonNumber: number) => {
+    setCurrentEpisodeId(episodeId);
+    setCurrentEpisodeInfo({ episodeNumber, seasonNumber });
+    handlePlay(episodeId);
   };
 
   const handleServerChange = (index: number) => {
@@ -157,7 +172,7 @@ export default function MoviePage({ params }: MoviePageProps) {
         <div className="sticky top-16 z-40 bg-black">
           <MoviePlayer
             movieId={movie.id}
-            title={movie.title}
+            title={currentEpisodeInfo ? `${movie.title} - S${currentEpisodeInfo.seasonNumber}E${currentEpisodeInfo.episodeNumber}` : movie.title}
             poster={movie.poster}
             embedUrl={embedUrl}
             initialProgress={initialProgress}
@@ -187,7 +202,18 @@ export default function MoviePage({ params }: MoviePageProps) {
       )}
 
       {/* Movie Details */}
-      <MovieDetails movie={movie} onPlay={handlePlay} isLoading={isLoadingStream} />
+      <MovieDetails movie={movie} onPlay={() => handlePlay(currentEpisodeId || undefined)} isLoading={isLoadingStream} />
+
+      {/* Episode Selector for Series */}
+      {movie.type === "series" && (
+        <div className="max-w-7xl mx-auto px-4 pb-8">
+          <EpisodeSelector
+            seriesId={id}
+            onEpisodeSelect={handleEpisodeSelect}
+            currentEpisodeId={currentEpisodeId || undefined}
+          />
+        </div>
+      )}
     </div>
   );
 }

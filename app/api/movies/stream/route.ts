@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllEmbedSources } from "@/lib/services/myflixer";
+import { getAllEmbedSources, getEpisodeEmbedSources } from "@/lib/services/myflixer";
 import { filterHtml, getAdBlockCss, getAdBlockScript } from "@/lib/services/ad-filter";
 
 const USER_AGENT =
@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
+    const episodeId = searchParams.get("episodeId");
     const embedUrl = searchParams.get("embed");
 
     // If embed URL is provided, proxy the content
@@ -16,15 +17,23 @@ export async function GET(request: Request) {
       return await proxyEmbed(embedUrl);
     }
 
-    if (!id) {
+    if (!id && !episodeId) {
       return NextResponse.json(
-        { error: "Movie ID is required" },
+        { error: "Movie ID or Episode ID is required" },
         { status: 400 }
       );
     }
 
-    // Get ALL embed sources for client-side fallback
-    const allSources = await getAllEmbedSources(id);
+    // Get embed sources - use episode-specific function if episodeId is provided
+    let allSources: { serverId: string; serverName: string; link: string }[];
+    
+    if (episodeId) {
+      // Fetch servers for specific episode
+      allSources = await getEpisodeEmbedSources(episodeId);
+    } else {
+      // Fetch servers for movie (or first episode of series)
+      allSources = await getAllEmbedSources(id!);
+    }
 
     if (allSources.length === 0) {
       return NextResponse.json(

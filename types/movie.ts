@@ -25,3 +25,21 @@ export interface StreamSource {
 export interface SearchResult {
   results: Movie[];
 }
+
+export interface Episode {
+  id: string;
+  episodeNumber: number;
+  title: string;
+  seasonId: string;
+}
+
+export interface Season {
+  id: string;
+  seasonNumber: number;
+  name: string;
+  episodeCount?: number;
+}
+
+export interface SeriesDetails extends MovieDetails {
+  seasons: Season[];
+}
