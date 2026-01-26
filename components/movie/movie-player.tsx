@@ -235,8 +235,8 @@ export function MoviePlayer({
           src={embedUrl}
           className="w-full h-full"
           allowFullScreen
-          allow="autoplay; encrypted-media; picture-in-picture"
-          sandbox="allow-scripts allow-same-origin allow-forms"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          referrerPolicy="no-referrer"
         />
       </div>
     );

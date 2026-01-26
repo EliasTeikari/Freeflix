@@ -6,11 +6,18 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export async function GET(request: Request) {
+  // #region agent log
+  fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'stream/route.ts:GET:entry',message:'Stream API called',data:{url:request.url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+  // #endregion
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     const server = searchParams.get("server");
     const embedUrl = searchParams.get("embed");
+
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'stream/route.ts:GET:params',message:'Stream params',data:{id,server,hasEmbedUrl:!!embedUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
 
     // If embed URL is provided, proxy the content
     if (embedUrl) {
@@ -27,6 +34,10 @@ export async function GET(request: Request) {
     // Get the embed source URL
     const sourceUrl = await getEmbedSource(id, server || undefined);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'stream/route.ts:GET:sourceUrl',message:'getEmbedSource result',data:{id,sourceUrl,hasSourceUrl:!!sourceUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
+
     if (!sourceUrl) {
       return NextResponse.json(
         { error: "No stream available" },
@@ -41,6 +52,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Stream API error:", error);
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'stream/route.ts:GET:error',message:'Stream API error',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
     return NextResponse.json(
       { error: "Failed to get stream" },
       { status: 500 }

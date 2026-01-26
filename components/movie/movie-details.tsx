@@ -11,9 +11,10 @@ import type { MovieDetails as MovieDetailsType } from "@/types/movie";
 interface MovieDetailsProps {
   movie: MovieDetailsType;
   onPlay?: () => void;
+  isLoading?: boolean;
 }
 
-export function MovieDetails({ movie, onPlay }: MovieDetailsProps) {
+export function MovieDetails({ movie, onPlay, isLoading: isStreamLoading }: MovieDetailsProps) {
   const { data: session } = useSession();
   const [isFavorite, setIsFavorite] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -160,9 +161,18 @@ export function MovieDetails({ movie, onPlay }: MovieDetailsProps) {
 
             {/* Actions */}
             <div className="flex flex-wrap gap-3">
-              <Button onClick={onPlay} size="lg" className="gap-2">
-                <Play className="h-5 w-5 fill-current" />
-                Watch Now
+              <Button onClick={onPlay} size="lg" className="gap-2" disabled={isStreamLoading}>
+                {isStreamLoading ? (
+                  <>
+                    <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Finding Stream...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-5 w-5 fill-current" />
+                    Watch Now
+                  </>
+                )}
               </Button>
 
               {session && (

@@ -108,17 +108,20 @@ export async function getMovieDetails(id: string): Promise<MovieDetails | null> 
     // First, try movie URL
     let html: string;
     let isMovie = true;
+    let actualUrl = `${BASE_URL}/movie/watch-movie-${id}`;
 
     try {
-      html = await fetchPage(`${BASE_URL}/movie/watch-movie-${id}`);
+      html = await fetchPage(actualUrl);
     } catch {
       // Try TV show URL
       try {
-        html = await fetchPage(`${BASE_URL}/tv/watch-tv-${id}`);
+        actualUrl = `${BASE_URL}/tv/watch-tv-${id}`;
+        html = await fetchPage(actualUrl);
         isMovie = false;
       } catch {
         // Try generic detail page
-        html = await fetchPage(`${BASE_URL}/watch-movie-${id}`);
+        actualUrl = `${BASE_URL}/watch-movie-${id}`;
+        html = await fetchPage(actualUrl);
       }
     }
 
@@ -220,52 +223,134 @@ export async function getStreamUrl(id: string, serverId: string): Promise<string
 
 // Get embed iframe source
 export async function getEmbedSource(id: string, serverId?: string): Promise<string | null> {
+  // #region agent log
+  fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:entry',message:'getEmbedSource called',data:{id,serverId,BASE_URL},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
   try {
-    // Get available servers first
-    const serversUrl = `${BASE_URL}/ajax/movie/episodes/${id}`;
-    const serversResponse = await fetch(serversUrl, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: BASE_URL,
-      },
-    });
+    // Try multiple potential AJAX endpoint patterns
+    const possibleUrls = [
+      `${BASE_URL}/ajax/movie/episodes/${id}`,
+      `${BASE_URL}/ajax/v2/movie/episodes/${id}`,
+      `${BASE_URL}/ajax/episode/list/${id}`,
+      `${BASE_URL}/ajax/movie/servers/${id}`,
+      `${BASE_URL}/ajax/film/servers?id=${id}`,
+    ];
 
-    if (!serversResponse.ok) {
+    let serversHtml = '';
+    let successfulUrl = '';
+    
+    for (const url of possibleUrls) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: BASE_URL,
+          },
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:ajax',message:'AJAX attempt',data:{url,status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        if (response.ok) {
+          serversHtml = await response.text();
+          successfulUrl = url;
+          break;
+        }
+      } catch {
+        // Continue to next URL
+      }
+    }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:serversHtml',message:'Servers HTML result',data:{hasHtml:!!serversHtml,htmlLength:serversHtml.length,htmlPreview:serversHtml.slice(0,500),successfulUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
+
+    if (!serversHtml) {
+      // #region agent log
+      fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:noHtml',message:'No servers HTML found - returning null',data:{id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
-    const serversHtml = await serversResponse.text();
     const $ = cheerio.load(serversHtml);
 
-    // Find the server ID
-    let targetServerId = serverId;
-    if (!targetServerId) {
-      // Get first available server
-      targetServerId = $(".server-item").first().attr("data-id") || "";
+    // Collect ALL available server IDs
+    const allServerIds: string[] = [];
+    
+    // If a specific serverId was requested, try it first
+    if (serverId) {
+      allServerIds.push(serverId);
     }
-
-    if (!targetServerId) {
-      return null;
-    }
-
-    // Get the embed link
-    const embedUrl = `${BASE_URL}/ajax/sources/${targetServerId}`;
-    const embedResponse = await fetch(embedUrl, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: BASE_URL,
-      },
+    
+    // Collect all server IDs from various selectors
+    $(".link-item[data-id], a[data-id], .server-item[data-id]").each((_, el) => {
+      const dataId = $(el).attr("data-id");
+      if (dataId && !allServerIds.includes(dataId)) {
+        allServerIds.push(dataId);
+      }
     });
 
-    if (!embedResponse.ok) {
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:allServers',message:'All server IDs collected',data:{allServerIds,count:allServerIds.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+    // #endregion
+
+    if (allServerIds.length === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:noServerId',message:'No server ID found - returning null',data:{id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
-    const embedData = await embedResponse.json();
-    return embedData.link || null;
+    // Try each server until we find one with an embed link
+    for (const targetServerId of allServerIds) {
+      // #region agent log
+      fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:tryingServer',message:'Trying server',data:{targetServerId,serverIndex:allServerIds.indexOf(targetServerId)+1,totalServers:allServerIds.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+      // #endregion
+
+      // Get the embed link - try multiple endpoint patterns
+      const embedEndpoints = [
+        `${BASE_URL}/ajax/episode/sources/${targetServerId}`,
+        `${BASE_URL}/ajax/sources/${targetServerId}`,
+        `${BASE_URL}/ajax/server/${targetServerId}`,
+        `${BASE_URL}/ajax/embed/${targetServerId}`,
+        `${BASE_URL}/ajax/get_link/${targetServerId}`,
+      ];
+
+      for (const embedUrl of embedEndpoints) {
+        try {
+          const embedResponse = await fetch(embedUrl, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "X-Requested-With": "XMLHttpRequest",
+              Referer: BASE_URL,
+            },
+          });
+
+          if (embedResponse.ok) {
+            const embedData = await embedResponse.json();
+            
+            if (embedData.link) {
+              // #region agent log
+              fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:success',message:'Found embed link',data:{targetServerId,link:embedData.link},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+              // #endregion
+              // Return the first working embed link - browser will load it in iframe
+              return embedData.link;
+            }
+          }
+        } catch {
+          // Continue to next endpoint
+        }
+      }
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:noEmbed',message:'No embed link found after trying all servers',data:{id,serversTriedCount:allServerIds.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+    // #endregion
+    return null;
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7261/ingest/f6959da3-5263-4fea-98f1-fa4de831f1de',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'myflixer.ts:getEmbedSource:error',message:'Exception caught',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     console.error("Embed source error:", error);
     return null;
   }
