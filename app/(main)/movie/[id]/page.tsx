@@ -39,12 +39,14 @@ export default function MoviePage({ params }: MoviePageProps) {
     fetchMovie();
   }, [id]);
 
-  // Fetch user progress
+  // Fetch user progress for the current content (movie or episode)
   useEffect(() => {
-    if (session?.user?.id && id) {
-      fetchProgress();
+    if (session?.user?.id) {
+      // For episodes, fetch episode-specific progress; for movies, use the movie ID
+      const progressId = currentEpisodeId || id;
+      fetchProgress(progressId);
     }
-  }, [session?.user?.id, id]);
+  }, [session?.user?.id, id, currentEpisodeId]);
 
   const fetchMovie = async () => {
     setIsLoading(true);
@@ -64,15 +66,18 @@ export default function MoviePage({ params }: MoviePageProps) {
     }
   };
 
-  const fetchProgress = async () => {
+  const fetchProgress = async (contentId: string) => {
     try {
-      const response = await fetch(`/api/progress/${id}`);
+      const response = await fetch(`/api/progress/${contentId}`);
       const data = await response.json();
       if (data.progressSeconds > 0) {
         setInitialProgress(data.progressSeconds);
+      } else {
+        setInitialProgress(0);
       }
     } catch (error) {
       console.error("Failed to fetch progress:", error);
+      setInitialProgress(0);
     }
   };
 
@@ -174,7 +179,7 @@ export default function MoviePage({ params }: MoviePageProps) {
       {isPlaying && embedUrl && (
         <div className="sticky top-16 z-40 bg-black">
           <MoviePlayer
-            movieId={movie.id}
+            movieId={currentEpisodeId || movie.id}
             title={currentEpisodeInfo ? `${movie.title} - S${currentEpisodeInfo.seasonNumber}E${currentEpisodeInfo.episodeNumber}` : movie.title}
             poster={movie.poster}
             embedUrl={embedUrl}

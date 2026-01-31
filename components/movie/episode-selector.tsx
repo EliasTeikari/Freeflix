@@ -1,9 +1,18 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Play, ChevronLeft, ChevronRight } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { Play, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import type { Season, Episode } from "@/types/movie";
+
+interface EpisodeProgress {
+  progressSeconds: number;
+  totalDuration: number | null;
+  progressPercent: number;
+  completed: boolean;
+  lastWatched: string;
+}
 
 interface EpisodeSelectorProps {
   seriesId: string;
@@ -16,12 +25,14 @@ export function EpisodeSelector({
   onEpisodeSelect,
   currentEpisodeId,
 }: EpisodeSelectorProps) {
+  const { data: session } = useSession();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [isLoadingSeasons, setIsLoadingSeasons] = useState(true);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [episodeProgress, setEpisodeProgress] = useState<Record<string, EpisodeProgress>>({});
   const tabsRef = useRef<HTMLDivElement>(null);
 
   // Fetch seasons on mount
@@ -35,6 +46,30 @@ export function EpisodeSelector({
       fetchEpisodes(selectedSeason.id);
     }
   }, [selectedSeason]);
+
+  // Fetch progress for episodes when episodes change
+  useEffect(() => {
+    if (session?.user?.id && episodes.length > 0) {
+      fetchEpisodeProgress(episodes.map((ep) => ep.id));
+    }
+  }, [episodes, session?.user?.id]);
+
+  const fetchEpisodeProgress = async (episodeIds: string[]) => {
+    try {
+      const response = await fetch("/api/progress/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: episodeIds }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setEpisodeProgress(data.progress || {});
+      }
+    } catch (err) {
+      console.error("Failed to fetch episode progress:", err);
+    }
+  };
 
   const fetchSeasons = async () => {
     setIsLoadingSeasons(true);
@@ -183,51 +218,88 @@ export function EpisodeSelector({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {episodes.map((episode) => (
-            <button
-              key={episode.id}
-              onClick={() => onEpisodeSelect(episode.id, episode.episodeNumber, selectedSeason?.seasonNumber || 1)}
-              className={cn(
-                "group relative p-4 rounded-lg border transition-all text-left",
-                currentEpisodeId === episode.id
-                  ? "bg-primary/20 border-primary"
-                  : "bg-dark-card border-dark-border hover:border-primary/50 hover:bg-dark-lighter"
-              )}
-            >
-              {/* Episode number */}
-              <div className="flex items-center justify-between mb-2">
-                <span className={cn(
-                  "text-lg font-bold",
-                  currentEpisodeId === episode.id ? "text-primary" : "text-white"
-                )}>
-                  {episode.episodeNumber}
-                </span>
-                <div className={cn(
-                  "p-1.5 rounded-full transition-colors",
+          {episodes.map((episode) => {
+            const progress = episodeProgress[episode.id];
+            const progressPercent = progress?.progressPercent || 0;
+            const isCompleted = progress?.completed || progressPercent >= 90;
+            const hasProgress = progressPercent > 0;
+
+            return (
+              <button
+                key={episode.id}
+                onClick={() => onEpisodeSelect(episode.id, episode.episodeNumber, selectedSeason?.seasonNumber || 1)}
+                className={cn(
+                  "group relative p-4 rounded-lg border transition-all text-left overflow-hidden",
                   currentEpisodeId === episode.id
-                    ? "bg-primary text-white"
-                    : "bg-dark-lighter text-gray-400 group-hover:bg-primary group-hover:text-white"
-                )}>
-                  <Play className="h-3 w-3 fill-current" />
+                    ? "bg-primary/20 border-primary"
+                    : isCompleted
+                    ? "bg-dark-card border-green-500/30"
+                    : "bg-dark-card border-dark-border hover:border-primary/50 hover:bg-dark-lighter"
+                )}
+              >
+                {/* Episode number and badges */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "text-lg font-bold",
+                      currentEpisodeId === episode.id ? "text-primary" : "text-white"
+                    )}>
+                      {episode.episodeNumber}
+                    </span>
+                    {/* Completed badge */}
+                    {isCompleted && (
+                      <div className="p-0.5 rounded-full bg-green-500 text-white">
+                        <Check className="h-3 w-3" />
+                      </div>
+                    )}
+                  </div>
+                  <div className={cn(
+                    "p-1.5 rounded-full transition-colors",
+                    currentEpisodeId === episode.id
+                      ? "bg-primary text-white"
+                      : "bg-dark-lighter text-gray-400 group-hover:bg-primary group-hover:text-white"
+                  )}>
+                    <Play className="h-3 w-3 fill-current" />
+                  </div>
                 </div>
-              </div>
 
-              {/* Episode title */}
-              <p className="text-sm text-gray-400 line-clamp-2" title={episode.title}>
-                {episode.title}
-              </p>
+                {/* Episode title */}
+                <p className="text-sm text-gray-400 line-clamp-2 mb-2" title={episode.title}>
+                  {episode.title}
+                </p>
 
-              {/* Currently playing indicator */}
-              {currentEpisodeId === episode.id && (
-                <div className="absolute top-2 right-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                  </span>
-                </div>
-              )}
-            </button>
-          ))}
+                {/* Progress info */}
+                {hasProgress && !isCompleted && (
+                  <p className="text-xs text-gray-500 mb-1">
+                    {progressPercent}% watched
+                  </p>
+                )}
+
+                {/* Progress bar */}
+                {hasProgress && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700">
+                    <div
+                      className={cn(
+                        "h-full transition-all",
+                        isCompleted ? "bg-green-500" : "bg-primary"
+                      )}
+                      style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Currently playing indicator */}
+                {currentEpisodeId === episode.id && (
+                  <div className="absolute top-2 right-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                    </span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
