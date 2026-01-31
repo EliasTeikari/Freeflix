@@ -27,91 +27,112 @@ A modern movie streaming platform built with Next.js that allows users to search
 | [Tailwind CSS](https://tailwindcss.com/)                           | Styling                                    |
 | [TypeScript](https://www.typescriptlang.org/)                      | Type safety                                |
 
-## Getting Started
+## Quick Start (Local Development)
+
+Run the app locally in 4 steps:
 
 ### Prerequisites
 
-- Node.js 18.17 or later
-- PostgreSQL database (local or cloud)
-- npm or yarn
+- [Node.js 18.17+](https://nodejs.org/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL and Redis)
 
-### Installation
-
-1. Clone the repository:
+### Step 1: Clone and Install
 
 ```bash
 git clone https://github.com/eliasteikari/Freeflix.git
 cd Freeflix
-```
-
-2. Install dependencies:
-
-```bash
 npm install
 ```
 
-3. Set up environment variables:
-
-```bash
-cp .env.example .env.local
-```
-
-4. Configure your `.env.local` file:
-
-```bash
-# Database (Vercel Postgres or local)
-DATABASE_URL="postgres://user:password@localhost:5432/freeflix"
-
-# Redis (optional, for progress caching)
-REDIS_URL="redis://localhost:6379"
-
-# NextAuth
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-secret-key-here"
-
-# Content Source
-MYFLIXER_BASE_URL="https://myflixerz.to"
-```
-
-5. Set up the database:
-
-```bash
-npm run db:push
-```
-
-6. Start the development server:
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to view the application.
-
-### Local Database with Docker
-
-For local development, you can use Docker to run PostgreSQL and Redis:
+### Step 2: Start Docker Services
 
 ```bash
 docker compose up -d
 ```
 
-This starts:
+This starts PostgreSQL and Redis in the background. Your data persists even when Docker restarts.
 
-**PostgreSQL:**
-- Host: `localhost`
-- Port: `5432`
-- User: `freeflix`
-- Password: `freeflix`
-- Database: `freeflix`
-- Connection string: `postgres://freeflix:freeflix@localhost:5432/freeflix`
+### Step 3: Create `.env.local`
 
-**Redis:**
-- Host: `localhost`
-- Port: `6379`
-- Connection string: `redis://localhost:6379`
-- Persistence: AOF (Append-Only File) enabled - data survives container restarts
+Create a file called `.env.local` in the project root with this content:
 
-Both services use Docker volumes for data persistence. Your data will survive container stops and restarts. Only `docker compose down -v` will delete the volumes.
+```bash
+# Database
+DATABASE_URL="postgres://freeflix:freeflix@localhost:5432/freeflix"
+
+# Redis
+REDIS_URL="redis://localhost:6379"
+
+# NextAuth
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="any-random-string-here-for-local-dev"
+
+# Content Source
+MYFLIXER_BASE_URL="https://myflixerz.to"
+```
+
+### Step 4: Set Up Database and Run
+
+```bash
+npm run db:push    # Creates database tables
+npm run dev        # Starts the app
+```
+
+Open [http://localhost:3000](http://localhost:3000) - you're done!
+
+---
+
+## Stopping and Restarting
+
+| What you want to do | Command |
+| --- | --- |
+| Stop the app | `Ctrl+C` in the terminal running `npm run dev` |
+| Stop Docker services | `docker compose stop` |
+| Restart Docker services | `docker compose start` |
+| Stop and remove containers (keeps data) | `docker compose down` |
+| Stop and delete all data | `docker compose down -v` |
+
+Your watch progress and user data persist across restarts. Only `docker compose down -v` deletes everything.
+
+---
+
+## Troubleshooting
+
+**"Connection refused" errors?**
+- Make sure Docker is running: `docker compose ps`
+- If containers aren't running: `docker compose up -d`
+
+**Database not working?**
+- Reset the database: `docker compose down -v && docker compose up -d && npm run db:push`
+
+**Port already in use?**
+- Check if something else is using port 3000, 5432, or 6379
+- Stop other services or change ports in `docker-compose.yml`
+
+---
+
+## Detailed Setup
+
+### Environment Variables Explained
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `REDIS_URL` | No | Redis connection string (defaults to `redis://localhost:6379`) |
+| `NEXTAUTH_URL` | Yes | Your app URL (use `http://localhost:3000` for local) |
+| `NEXTAUTH_SECRET` | Yes | Random string for session encryption |
+| `MYFLIXER_BASE_URL` | Yes | Content source URL |
+
+### Docker Services
+
+When you run `docker compose up -d`, these services start:
+
+| Service | Port | Connection String |
+| --- | --- | --- |
+| PostgreSQL | 5432 | `postgres://freeflix:freeflix@localhost:5432/freeflix` |
+| Redis | 6379 | `redis://localhost:6379` |
+
+Both use Docker volumes for persistence - your data survives container restarts.
 
 ## Scripts
 
