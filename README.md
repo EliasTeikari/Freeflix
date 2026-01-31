@@ -21,6 +21,7 @@ A modern movie streaming platform built with Next.js that allows users to search
 | [Next.js 16](https://nextjs.org/)                                  | Full-stack React framework with App Router |
 | [React 19](https://react.dev/)                                     | UI library                                 |
 | [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres) | Database                                   |
+| [Redis](https://redis.io/)                                         | Progress caching for fast reads/writes     |
 | [Drizzle ORM](https://orm.drizzle.team/)                           | Type-safe database queries                 |
 | [NextAuth.js v5](https://authjs.dev/)                              | Authentication                             |
 | [Tailwind CSS](https://tailwindcss.com/)                           | Styling                                    |
@@ -61,6 +62,9 @@ cp .env.example .env.local
 # Database (Vercel Postgres or local)
 DATABASE_URL="postgres://user:password@localhost:5432/freeflix"
 
+# Redis (optional, for progress caching)
+REDIS_URL="redis://localhost:6379"
+
 # NextAuth
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="your-secret-key-here"
@@ -85,21 +89,29 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ### Local Database with Docker
 
-For local development, you can use Docker to run PostgreSQL:
+For local development, you can use Docker to run PostgreSQL and Redis:
 
 ```bash
 docker compose up -d
 ```
 
-This starts a PostgreSQL instance with:
+This starts:
 
+**PostgreSQL:**
 - Host: `localhost`
 - Port: `5432`
 - User: `freeflix`
 - Password: `freeflix`
 - Database: `freeflix`
+- Connection string: `postgres://freeflix:freeflix@localhost:5432/freeflix`
 
-Connection string: `postgres://freeflix:freeflix@localhost:5432/freeflix`
+**Redis:**
+- Host: `localhost`
+- Port: `6379`
+- Connection string: `redis://localhost:6379`
+- Persistence: AOF (Append-Only File) enabled - data survives container restarts
+
+Both services use Docker volumes for data persistence. Your data will survive container stops and restarts. Only `docker compose down -v` will delete the volumes.
 
 ## Scripts
 
@@ -137,6 +149,7 @@ freeflix/
 │   └── layout/           # Layout components
 ├── lib/
 │   ├── db/               # Database connection & schema
+│   ├── redis/            # Redis client & caching
 │   ├── auth/             # NextAuth configuration
 │   ├── services/         # External service integrations
 │   └── utils/            # Utility functions
@@ -158,6 +171,7 @@ freeflix/
 Required environment variables for deployment:
 
 - `DATABASE_URL` or `POSTGRES_URL` - PostgreSQL connection string
+- `REDIS_URL` - Redis connection string (optional, falls back to `redis://localhost:6379`)
 - `NEXTAUTH_URL` - Your production URL
 - `NEXTAUTH_SECRET` - A secure random string
 - `MYFLIXER_BASE_URL` - Content source URL

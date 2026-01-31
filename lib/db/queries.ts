@@ -1,6 +1,14 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db, users, watchProgress, favorites } from "./index";
 import type { NewUser, NewWatchProgress, NewFavorite } from "./schema";
+import {
+  getProgressFromCache,
+  setProgressInCache,
+  getAllProgressFromCache,
+  setAllProgressInCache,
+  deleteProgressFromCache,
+  type CachedProgress,
+} from "@/lib/redis/progress";
 
 // User queries
 export async function getUserByEmail(email: string) {
@@ -20,65 +28,141 @@ export async function createUser(data: NewUser) {
   return user;
 }
 
-// Watch progress queries
+// Helper to convert DB record to cache format
+function toCachedProgress(record: {
+  movieId: string;
+  movieTitle: string | null;
+  moviePoster: string | null;
+  progressSeconds: number;
+  totalDuration: number | null;
+  lastWatched: Date;
+  completed: boolean;
+}): CachedProgress {
+  return {
+    movieId: record.movieId,
+    movieTitle: record.movieTitle,
+    moviePoster: record.moviePoster,
+    progressSeconds: record.progressSeconds,
+    totalDuration: record.totalDuration,
+    lastWatched: record.lastWatched.toISOString(),
+    completed: record.completed,
+  };
+}
+
+// Watch progress queries (with Redis caching)
 export async function getWatchProgressByUser(userId: string) {
-  return db.query.watchProgress.findMany({
+  // Try cache first
+  const cached = await getAllProgressFromCache(userId);
+  if (cached) {
+    return cached.map((item) => ({
+      ...item,
+      lastWatched: new Date(item.lastWatched),
+    }));
+  }
+
+  // Fetch from database
+  const results = await db.query.watchProgress.findMany({
     where: eq(watchProgress.userId, userId),
     orderBy: [desc(watchProgress.lastWatched)],
   });
+
+  // Populate cache
+  if (results.length > 0) {
+    await setAllProgressInCache(
+      userId,
+      results.map(toCachedProgress)
+    );
+  }
+
+  return results;
 }
 
 export async function getWatchProgressByMovie(userId: string, movieId: string) {
-  return db.query.watchProgress.findFirst({
+  // Try cache first
+  const cached = await getProgressFromCache(userId, movieId);
+  if (cached) {
+    return {
+      ...cached,
+      id: "", // ID not stored in cache, but not needed for reads
+      userId,
+      lastWatched: new Date(cached.lastWatched),
+    };
+  }
+
+  // Fetch from database
+  const result = await db.query.watchProgress.findFirst({
     where: and(
       eq(watchProgress.userId, userId),
       eq(watchProgress.movieId, movieId)
     ),
   });
+
+  // Populate cache if found
+  if (result) {
+    await setProgressInCache(userId, toCachedProgress(result));
+  }
+
+  return result;
 }
 
 export async function upsertWatchProgress(
   userId: string,
   data: Omit<NewWatchProgress, "userId" | "id">
 ) {
-  const existing = await getWatchProgressByMovie(userId, data.movieId);
+  const now = new Date();
+  const completed =
+    data.totalDuration && data.progressSeconds
+      ? data.progressSeconds / data.totalDuration > 0.9
+      : false;
 
+  // Check if exists (skip cache for upsert to get actual DB state)
+  const existing = await db.query.watchProgress.findFirst({
+    where: and(
+      eq(watchProgress.userId, userId),
+      eq(watchProgress.movieId, data.movieId)
+    ),
+  });
+
+  let result;
   if (existing) {
     const [updated] = await db
       .update(watchProgress)
       .set({
         ...data,
-        lastWatched: new Date(),
-        completed:
-          data.totalDuration && data.progressSeconds
-            ? data.progressSeconds / data.totalDuration > 0.9
-            : false,
+        lastWatched: now,
+        completed,
       })
       .where(eq(watchProgress.id, existing.id))
       .returning();
-    return updated;
+    result = updated;
+  } else {
+    const [created] = await db
+      .insert(watchProgress)
+      .values({
+        ...data,
+        userId,
+        completed,
+      })
+      .returning();
+    result = created;
   }
 
-  const [created] = await db
-    .insert(watchProgress)
-    .values({
-      ...data,
-      userId,
-      completed:
-        data.totalDuration && data.progressSeconds
-          ? data.progressSeconds / data.totalDuration > 0.9
-          : false,
-    })
-    .returning();
-  return created;
+  // Update cache
+  await setProgressInCache(userId, toCachedProgress(result));
+
+  return result;
 }
 
 export async function deleteWatchProgress(userId: string, movieId: string) {
+  // Delete from database
   await db
     .delete(watchProgress)
     .where(
       and(eq(watchProgress.userId, userId), eq(watchProgress.movieId, movieId))
     );
+
+  // Delete from cache
+  await deleteProgressFromCache(userId, movieId);
 }
 
 // Favorites queries
