@@ -5,22 +5,12 @@ import { filterHtml, getAdBlockCss, getAdBlockScript } from "@/lib/services/ad-f
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-// #region agent log
-const logDebug = (location: string, message: string, data: Record<string, unknown>, hypothesisId: string) => {
-  console.log(`[DEBUG][${hypothesisId}] ${location}: ${message}`, JSON.stringify(data));
-};
-// #endregion
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     const episodeId = searchParams.get("episodeId");
     const embedUrl = searchParams.get("embed");
-
-    // #region agent log
-    logDebug('stream/route.ts:GET:entry', 'Stream API called', { id, episodeId, hasEmbedUrl: !!embedUrl, MYFLIXER_BASE_URL: process.env.MYFLIXER_BASE_URL || 'NOT_SET' }, 'A');
-    // #endregion
 
     // If embed URL is provided, proxy the content
     if (embedUrl) {
@@ -36,10 +26,6 @@ export async function GET(request: Request) {
 
     // Get embed sources - use episode-specific function if episodeId is provided
     let allSources: { serverId: string; serverName: string; link: string }[];
-    
-    // #region agent log
-    logDebug('stream/route.ts:GET:before-fetch', 'About to fetch embed sources', { id, episodeId, isEpisode: !!episodeId }, 'B');
-    // #endregion
 
     if (episodeId) {
       // Fetch servers for specific episode
@@ -49,14 +35,7 @@ export async function GET(request: Request) {
       allSources = await getAllEmbedSources(id!);
     }
 
-    // #region agent log
-    logDebug('stream/route.ts:GET:after-fetch', 'Embed sources fetched', { sourcesCount: allSources.length, sources: allSources.slice(0, 3).map(s => ({ serverName: s.serverName, linkPrefix: s.link?.substring(0, 50) })) }, 'D');
-    // #endregion
-
     if (allSources.length === 0) {
-      // #region agent log
-      logDebug('stream/route.ts:GET:no-sources', 'No embed sources found', { id, episodeId }, 'D');
-      // #endregion
       return NextResponse.json(
         { 
           error: "Stream temporarily unavailable",
@@ -67,9 +46,6 @@ export async function GET(request: Request) {
     }
 
     // Return all embed URLs for client-side fallback
-    // #region agent log
-    logDebug('stream/route.ts:GET:returning', 'Returning embed URLs', { embedUrl: allSources[0].link, totalUrls: allSources.length }, 'C');
-    // #endregion
     return NextResponse.json({ 
       embedUrl: allSources[0].link, // Primary URL for backwards compatibility
       embedUrls: allSources.map(s => ({
@@ -80,9 +56,6 @@ export async function GET(request: Request) {
       proxyUrl: `/api/movies/stream?embed=${encodeURIComponent(allSources[0].link)}`
     });
   } catch (error) {
-    // #region agent log
-    logDebug('stream/route.ts:GET:error', 'Stream API error', { error: String(error), stack: error instanceof Error ? error.stack : undefined }, 'B');
-    // #endregion
     console.error("Stream API error:", error);
     return NextResponse.json(
       { error: "Failed to get stream" },

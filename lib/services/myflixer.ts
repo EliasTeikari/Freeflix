@@ -3,12 +3,6 @@ import type { Movie, MovieDetails, StreamSource, Season, Episode } from "@/types
 
 const BASE_URL = process.env.MYFLIXER_BASE_URL || "https://myflixerz.to";
 
-// #region agent log
-const logDebug = (location: string, message: string, data: Record<string, unknown>, hypothesisId: string) => {
-  console.log(`[DEBUG][${hypothesisId}] ${location}: ${message}`, JSON.stringify(data));
-};
-// #endregion
-
 // User agent to mimic a real browser
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -259,9 +253,6 @@ export async function getStreamUrl(id: string, serverId: string): Promise<string
 
 // Get ALL embed iframe sources for client-side fallback
 export async function getAllEmbedSources(id: string): Promise<{ serverId: string; serverName: string; link: string }[]> {
-  // #region agent log
-  logDebug('myflixer.ts:getAllEmbedSources:entry', 'Fetching all embed sources', { id, BASE_URL }, 'A');
-  // #endregion
   try {
     const possibleUrls = [
       `${BASE_URL}/ajax/movie/episodes/${id}`,
@@ -272,38 +263,26 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
     ];
 
     let serversHtml = '';
-    let successUrl = '';
     for (const url of possibleUrls) {
       try {
         const response = await fetch(url, {
           headers: { "User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest", Referer: BASE_URL },
         });
-        // #region agent log
-        logDebug('myflixer.ts:getAllEmbedSources:ajax', 'AJAX response', { url, status: response.status, ok: response.ok }, 'B');
-        // #endregion
         
         // Check if response is HTML (blocked by bot protection) instead of JSON
         const contentType = response.headers.get('content-type') || '';
         if (response.ok && contentType.includes('text/html')) {
           // Site is returning HTML instead of JSON - likely blocked by Cloudflare/anti-bot
-          // #region agent log
-          logDebug('myflixer.ts:getAllEmbedSources:blocked', 'Request blocked - received HTML instead of JSON', { url, contentType }, 'B');
-          // #endregion
           continue;
         }
         
-        if (response.ok) { serversHtml = await response.text(); successUrl = url; break; }
-      } catch (e) {
-        // #region agent log
-        logDebug('myflixer.ts:getAllEmbedSources:ajax-error', 'AJAX fetch failed', { url, error: String(e) }, 'B');
-        // #endregion
+        if (response.ok) { serversHtml = await response.text(); break; }
+      } catch {
+        // Continue to next URL
       }
     }
 
     if (!serversHtml) {
-      // #region agent log
-      logDebug('myflixer.ts:getAllEmbedSources:no-html', 'No servers HTML found - source may be blocking automated requests', { id, triedUrls: possibleUrls.length }, 'B');
-      // #endregion
       return [];
     }
 
@@ -318,10 +297,6 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
         allServers.push({ id: dataId, name: title });
       }
     });
-
-    // #region agent log
-    logDebug('myflixer.ts:getAllEmbedSources:servers-parsed', 'Servers parsed from HTML', { successUrl, serverCount: allServers.length, servers: allServers.slice(0, 5) }, 'D');
-    // #endregion
 
     const embedLinks: { serverId: string; serverName: string; link: string }[] = [];
 
@@ -340,9 +315,6 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
             const embedData = await embedResponse.json();
             if (embedData.link) {
               embedLinks.push({ serverId: server.id, serverName: server.name, link: embedData.link });
-              // #region agent log
-              logDebug('myflixer.ts:getAllEmbedSources:embed-found', 'Embed link found', { serverId: server.id, serverName: server.name, linkPrefix: embedData.link.substring(0, 60) }, 'C');
-              // #endregion
               break;
             }
           }
@@ -350,15 +322,8 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
       }
     }
 
-    // #region agent log
-    logDebug('myflixer.ts:getAllEmbedSources:complete', 'All embed sources fetched', { totalLinks: embedLinks.length }, 'D');
-    // #endregion
-
     return embedLinks;
   } catch (error) {
-    // #region agent log
-    logDebug('myflixer.ts:getAllEmbedSources:error', 'Error fetching embed sources', { error: String(error) }, 'B');
-    // #endregion
     console.error("getAllEmbedSources error:", error);
     return [];
   }

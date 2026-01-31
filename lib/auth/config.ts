@@ -2,8 +2,15 @@ import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getUserByEmail } from "@/lib/db/queries";
+import { edgeAuthConfig } from "./edge-config";
 
+/**
+ * Full auth configuration with Credentials provider.
+ * This config includes database access and should only be used in
+ * API routes and server components (NOT in middleware/proxy).
+ */
 export const authConfig: NextAuthConfig = {
+  ...edgeAuthConfig,
   providers: [
     Credentials({
       name: "credentials",
@@ -37,14 +44,8 @@ export const authConfig: NextAuthConfig = {
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 1 day
-  },
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
+    ...edgeAuthConfig.callbacks,
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
@@ -56,25 +57,6 @@ export const authConfig: NextAuthConfig = {
         session.user.id = token.id as string;
       }
       return session;
-    },
-    authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = !!auth?.user;
-      const isOnProtectedRoute =
-        nextUrl.pathname.startsWith("/favorites") ||
-        nextUrl.pathname.startsWith("/continue-watching");
-      const isOnAuthPage =
-        nextUrl.pathname.startsWith("/login") ||
-        nextUrl.pathname.startsWith("/register");
-
-      if (isOnProtectedRoute && !isLoggedIn) {
-        return Response.redirect(new URL("/login", nextUrl));
-      }
-
-      if (isOnAuthPage && isLoggedIn) {
-        return Response.redirect(new URL("/", nextUrl));
-      }
-
-      return true;
     },
   },
 };

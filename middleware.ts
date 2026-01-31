@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
-import { authConfig } from "@/lib/auth/config";
+import { edgeAuthConfig } from "@/lib/auth/edge-config";
 
-export default NextAuth(authConfig).auth;
+// Use edge-compatible config that doesn't import ioredis/postgres
+export default NextAuth(edgeAuthConfig).auth;
 
 export const config = {
   matcher: [
