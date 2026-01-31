@@ -262,25 +262,31 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
       `${BASE_URL}/ajax/film/servers?id=${id}`,
     ];
 
-    let serversHtml = '';
-    for (const url of possibleUrls) {
-      try {
-        const response = await fetch(url, {
-          headers: { "User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest", Referer: BASE_URL },
-        });
-        
-        // Check if response is HTML (blocked by bot protection) instead of JSON
-        const contentType = response.headers.get('content-type') || '';
-        if (response.ok && contentType.includes('text/html')) {
-          // Site is returning HTML instead of JSON - likely blocked by Cloudflare/anti-bot
-          continue;
+    // Fetch all URLs in parallel and use the first successful response
+    const serverResults = await Promise.all(
+      possibleUrls.map(async (url) => {
+        try {
+          const response = await fetch(url, {
+            headers: { "User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest", Referer: BASE_URL },
+          });
+          
+          // Check if response is HTML (blocked by bot protection) instead of JSON
+          const contentType = response.headers.get('content-type') || '';
+          if (response.ok && contentType.includes('text/html')) {
+            return null;
+          }
+          
+          if (response.ok) {
+            return await response.text();
+          }
+        } catch {
+          // Ignore failures
         }
-        
-        if (response.ok) { serversHtml = await response.text(); break; }
-      } catch {
-        // Continue to next URL
-      }
-    }
+        return null;
+      })
+    );
+
+    const serversHtml = serverResults.find((r) => r !== null) || '';
 
     if (!serversHtml) {
       return [];
@@ -298,31 +304,35 @@ export async function getAllEmbedSources(id: string): Promise<{ serverId: string
       }
     });
 
-    const embedLinks: { serverId: string; serverName: string; link: string }[] = [];
+    // Fetch embed links for all servers in parallel
+    const embedResults = await Promise.all(
+      allServers.map(async (server) => {
+        const embedEndpoints = [
+          `${BASE_URL}/ajax/episode/sources/${server.id}`,
+          `${BASE_URL}/ajax/sources/${server.id}`,
+        ];
 
-    for (const server of allServers) {
-      const embedEndpoints = [
-        `${BASE_URL}/ajax/episode/sources/${server.id}`,
-        `${BASE_URL}/ajax/sources/${server.id}`,
-      ];
-
-      for (const embedUrl of embedEndpoints) {
-        try {
-          const embedResponse = await fetch(embedUrl, {
-            headers: { "User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest", Referer: BASE_URL },
-          });
-          if (embedResponse.ok) {
-            const embedData = await embedResponse.json();
-            if (embedData.link) {
-              embedLinks.push({ serverId: server.id, serverName: server.name, link: embedData.link });
-              break;
+        for (const embedUrl of embedEndpoints) {
+          try {
+            const embedResponse = await fetch(embedUrl, {
+              headers: { "User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest", Referer: BASE_URL },
+            });
+            if (embedResponse.ok) {
+              const embedData = await embedResponse.json();
+              if (embedData.link) {
+                return { serverId: server.id, serverName: server.name, link: embedData.link };
+              }
             }
+          } catch {
+            // Continue to next endpoint
           }
-        } catch { /* continue */ }
-      }
-    }
+        }
+        return null;
+      })
+    );
 
-    return embedLinks;
+    // Filter out null results
+    return embedResults.filter((r): r is { serverId: string; serverName: string; link: string } => r !== null);
   } catch (error) {
     console.error("getAllEmbedSources error:", error);
     return [];
@@ -496,24 +506,28 @@ export async function getSeriesSeasons(id: string): Promise<Season[]> {
       `${BASE_URL}/ajax/season/list/${id}`,
     ];
 
-    let seasonsHtml = '';
-    for (const url of possibleUrls) {
-      try {
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent": USER_AGENT,
-            "X-Requested-With": "XMLHttpRequest",
-            Referer: BASE_URL,
-          },
-        });
-        if (response.ok) {
-          seasonsHtml = await response.text();
-          break;
+    // Fetch all URLs in parallel and use the first successful response
+    const results = await Promise.all(
+      possibleUrls.map(async (url) => {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "X-Requested-With": "XMLHttpRequest",
+              Referer: BASE_URL,
+            },
+          });
+          if (response.ok) {
+            return await response.text();
+          }
+        } catch {
+          // Ignore failures
         }
-      } catch {
-        // Continue to next URL
-      }
-    }
+        return null;
+      })
+    );
+
+    const seasonsHtml = results.find((r) => r !== null) || '';
 
     if (!seasonsHtml) {
       return [];
@@ -560,24 +574,28 @@ export async function getSeasonEpisodes(seasonId: string): Promise<Episode[]> {
       `${BASE_URL}/ajax/episode/list/${seasonId}`,
     ];
 
-    let episodesHtml = '';
-    for (const url of possibleUrls) {
-      try {
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent": USER_AGENT,
-            "X-Requested-With": "XMLHttpRequest",
-            Referer: BASE_URL,
-          },
-        });
-        if (response.ok) {
-          episodesHtml = await response.text();
-          break;
+    // Fetch all URLs in parallel and use the first successful response
+    const results = await Promise.all(
+      possibleUrls.map(async (url) => {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT,
+              "X-Requested-With": "XMLHttpRequest",
+              Referer: BASE_URL,
+            },
+          });
+          if (response.ok) {
+            return await response.text();
+          }
+        } catch {
+          // Ignore failures
         }
-      } catch {
-        // Continue to next URL
-      }
-    }
+        return null;
+      })
+    );
+
+    const episodesHtml = results.find((r) => r !== null) || '';
 
     if (!episodesHtml) {
       return [];

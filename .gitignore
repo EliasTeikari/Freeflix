@@ -47,3 +47,4 @@ next-env.d.ts
 
 # Drizzle
 drizzle/
+terminal_history.txt
